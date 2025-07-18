@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>제미나이 테트리스</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 게임을 위한 커스텀 스타일 */
+        body {
+            font-family: 'Press Start 2P', cursive;
+            touch-action: none; /* 모바일에서 더블 탭으로 확대되는 것을 방지 */
+        }
+        /* 캔버스의 픽셀이 뭉개지지 않고 선명하게 보이도록 설정 */
+        canvas {
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-crisp-edges;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        /* 버튼에 그림자 효과를 주어 입체감 부여 */
+        .btn-control {
+            box-shadow: 0 4px 0 #6b7280; /* 아래쪽에 그림자 */
+            transition: all 0.1s ease-in-out;
+        }
+        /* 버튼을 눌렀을 때의 효과 */
+        .btn-control:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #6b7280;
+        }
+        /* 로딩 스피너 애니메이션 */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-800 text-white flex flex-col items-center justify-center min-h-screen p-4">
+
+    <h1 class="text-4xl md:text-5xl mb-6 text-center">GEMINI TETRIS</h1>
+
+    <div class="flex flex-col md:flex-row gap-6 w-full max-w-4xl">
+        <!-- 게임 정보 (다음 블록, 점수 등) -->
+        <div class="w-full md:w-1/4 bg-gray-900 p-4 rounded-lg border-4 border-gray-700 order-2 md:order-1">
+            <h2 class="text-xl mb-4 text-center">정보</h2>
+            <div>
+                <h3 class="text-lg">점수</h3>
+                <p id="score" class="text-2xl text-yellow-400">0</p>
+            </div>
+            <div class="mt-4">
+                <h3 class="text-lg">레벨</h3>
+                <p id="level" class="text-2xl text-green-400">1</p>
+            </div>
+            <div class="mt-4">
+                <h3 class="text-lg">지운 줄</h3>
+                <p id="lines" class="text-2xl text-blue-400">0</p>
+            </div>
+            <div class="mt-4">
+                <h3 class="text-lg">다음</h3>
+                <canvas id="next" width="120" height="120" class="bg-gray-800 border-2 border-gray-600 rounded-md mx-auto"></canvas>
+            </div>
+            <div class="mt-6 text-center space-y-2">
+                 <button id="pause-btn" class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-2 px-4 rounded-lg btn-control">일시정지</button>
+                 <!-- ✨ AI 색상 변경 버튼 -->
+                 <button id="ai-color-btn" class="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg btn-control flex items-center justify-center gap-2">
+                    ✨ AI 색상 변경
+                    <div id="color-loader" class="loader w-5 h-5 border-2 border-t-white hidden"></div>
+                 </button>
+            </div>
+        </div>
+
+        <!-- 메인 게임 화면 -->
+        <div class="relative w-full md:w-1/2 order-1 md:order-2">
+            <canvas id="tetris" width="240" height="480" class="border-4 border-gray-700 bg-gray-900 rounded-lg mx-auto"></canvas>
+            <div id="game-over" class="absolute inset-0 bg-black bg-opacity-75 flex-col items-center justify-center text-center hidden p-4">
+                <h2 class="text-4xl text-red-500">게임 오버</h2>
+                <!-- ✨ AI 게임 오버 메시지 표시 영역 -->
+                <div id="ai-message-container" class="mt-4 h-20 flex items-center justify-center">
+                    <div id="message-loader" class="loader hidden"></div>
+                    <p id="ai-message" class="text-lg text-yellow-300"></p>
+                </div>
+                <button id="restart-btn" class="mt-4 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg btn-control">다시 시작</button>
+            </div>
+             <div id="start-screen" class="absolute inset-0 bg-black bg-opacity-75 flex-col items-center justify-center text-center flex">
+                <h2 class="text-3xl text-yellow-300 mb-4">테트리스</h2>
+                <p class="mb-6 text-sm">PC: 방향키 & 스페이스바<br>모바일: 아래 버튼 사용</p>
+                <button id="start-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg btn-control text-2xl">시작하기</button>
+            </div>
+        </div>
+        
+        <!-- 모바일 컨트롤러 -->
+        <div class="w-full md:w-1/4 order-3 md:order-3 flex md:flex-col items-center justify-center gap-2 mt-4 md:mt-0">
+             <div class="flex flex-col items-center gap-2">
+                 <button id="rotate-btn" class="w-20 h-20 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-full btn-control text-lg">회전</button>
+                 <div class="flex gap-2">
+                    <button id="left-btn" class="w-20 h-20 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-full btn-control text-2xl">←</button>
+                    <button id="right-btn" class="w-20 h-20 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-full btn-control text-2xl">→</button>
+                 </div>
+                 <button id="down-btn" class="w-20 h-20 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded-full btn-control text-2xl">↓</button>
+                 <button id="drop-btn" class="w-full mt-2 py-2 px-4 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg btn-control">HARD DROP</button>
+             </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 게임 설정 및 변수 초기화 ---
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+        const nextCanvas = document.getElementById('next');
+        const nextContext = nextCanvas.getContext('2d');
+
+        const scoreElement = document.getElementById('score');
+        const levelElement = document.getElementById('level');
+        const linesElement = document.getElementById('lines');
+        const gameOverElement = document.getElementById('game-over');
+        const startScreenElement = document.getElementById('start-screen');
+        
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const pauseBtn = document.getElementById('pause-btn');
+        const aiColorBtn = document.getElementById('ai-color-btn');
+        const aiMessageElement = document.getElementById('ai-message');
+        const colorLoader = document.getElementById('color-loader');
+        const messageLoader = document.getElementById('message-loader');
+
+
+        const COLS = 10; // 가로 칸 수
+        const ROWS = 20; // 세로 칸 수
+        const BLOCK_SIZE = 24; // 한 블록의 크기 (픽셀)
+
+        context.canvas.width = COLS * BLOCK_SIZE;
+        context.canvas.height = ROWS * BLOCK_SIZE;
+        
+        nextContext.canvas.width = 4 * BLOCK_SIZE;
+        nextContext.canvas.height = 4 * BLOCK_SIZE;
+        
+        const SHAPES = [
+            [[0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0]], // I
+            [[1,1], [1,1]], // O
+            [[0,1,0], [1,1,1], [0,0,0]], // T
+            [[0,1,1], [1,1,0], [0,0,0]], // S
+            [[1,1,0], [0,1,1], [0,0,0]], // Z
+            [[1,0,0], [1,1,1], [0,0,0]], // J
+            [[0,0,1], [1,1,1], [0,0,0]]  // L
+        ];
+
+        let COLORS = [
+            null, // 0번 인덱스는 비워둠
+            '#00F0F0', // I (하늘색)
+            '#F0F000', // O (노란색)
+            '#A000F0', // T (보라색)
+            '#00F000', // S (초록색)
+            '#F00000', // Z (빨간색)
+            '#0000F0', // J (파란색)
+            '#F0A000'  // L (주황색)
+        ];
+
+        let board = createBoard();
+        let player;
+        let nextPiece;
+        
+        let score = 0;
+        let level = 1;
+        let lines = 0;
+        
+        let dropCounter = 0;
+        let dropInterval = 1000;
+        let lastTime = 0;
+        let isPaused = false;
+        let isGameOver = true;
+        
+        // --- Gemini API 기능 ---
+
+        /**
+         * ✨ Gemini API를 호출하여 블록 색상 팔레트를 변경합니다.
+         */
+        async function changeAIColors() {
+            colorLoader.classList.remove('hidden');
+            aiColorBtn.disabled = true;
+
+            const prompt = "Create a JSON array of 7 vibrant and distinct hex color codes for a retro block game. The colors should be aesthetically pleasing together. The array should only contain the hex code strings.";
+            const payload = {
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "ARRAY",
+                        items: { type: "STRING" }
+                    }
+                }
+            };
+            
+            const apiKey = ""; // API 키는 비워둡니다.
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0]) {
+                    const newColors = JSON.parse(result.candidates[0].content.parts[0].text);
+                    if (Array.isArray(newColors) && newColors.length === 7) {
+                        COLORS = [null, ...newColors]; // 첫 번째는 null 유지
+                        if (!isPaused && !isGameOver) {
+                            draw(); // 게임이 진행중일 때만 즉시 다시 그림
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("AI 색상 변경 오류:", error);
+            } finally {
+                colorLoader.classList.add('hidden');
+                aiColorBtn.disabled = false;
+            }
+        }
+
+        /**
+         * ✨ Gemini API를 호출하여 게임 오버 메시지를 생성합니다.
+         * @param {number} finalScore - 플레이어의 최종 점수
+         */
+        async function getAIGameOverMessage(finalScore) {
+            messageLoader.classList.remove('hidden');
+            aiMessageElement.innerText = "";
+
+            const prompt = `테트리스 게임이 끝났습니다. 최종 점수는 ${finalScore}점입니다. 이 점수에 대해 짧고, 위트 있고, 격려가 되는 메시지를 한국어로 한 문장 만들어주세요.`;
+            const payload = {
+                contents: [{ role: "user", parts: [{ text: prompt }] }]
+            };
+
+            const apiKey = ""; // API 키는 비워둡니다.
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0]) {
+                    aiMessageElement.innerText = result.candidates[0].content.parts[0].text;
+                } else {
+                    aiMessageElement.innerText = "다음에 더 잘할 수 있어요!";
+                }
+            } catch (error) {
+                console.error("AI 메시지 생성 오류:", error);
+                aiMessageElement.innerText = "다시 도전해보세요!";
+            } finally {
+                messageLoader.classList.add('hidden');
+            }
+        }
+
+
+        // --- 핵심 게임 로직 ---
+
+        function createBoard() {
+            return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+        }
+        
+        function handleGameOver() {
+            isGameOver = true;
+            gameOverElement.style.display = 'flex';
+            getAIGameOverMessage(score); // ✨ 게임 오버 시 AI 메시지 요청
+        }
+
+        function playerReset() {
+            let currentTypeId;
+            if (nextPiece) {
+                currentTypeId = nextPiece.typeId;
+            } else {
+                currentTypeId = Math.floor(Math.random() * SHAPES.length) + 1;
+            }
+
+            const matrix = SHAPES[currentTypeId - 1];
+            
+            player = {
+                pos: { x: Math.floor(COLS / 2) - Math.floor(matrix[0].length / 2), y: 0 },
+                matrix: matrix,
+                typeId: currentTypeId
+            };
+
+            const nextTypeId = Math.floor(Math.random() * SHAPES.length) + 1;
+            nextPiece = {
+                matrix: SHAPES[nextTypeId - 1],
+                typeId: nextTypeId
+            };
+
+            if (collide(board, player)) {
+                handleGameOver();
+            }
+        }
+        
+        function drawMatrix(matrix, offset, ctx) {
+            matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        ctx.fillStyle = COLORS[value];
+                        ctx.fillRect(x + offset.x, y + offset.y, 1, 1);
+                        ctx.strokeStyle = '#2d3748';
+                        ctx.lineWidth = 0.1;
+                        ctx.strokeRect(x + offset.x, y + offset.y, 1, 1);
+                    }
+                });
+            });
+        }
+        
+        function drawNextPiece() {
+            if (!nextPiece) return;
+            nextContext.fillStyle = '#1a202c';
+            nextContext.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+            nextContext.save();
+            nextContext.scale(BLOCK_SIZE, BLOCK_SIZE);
+            
+            const matrix = nextPiece.matrix;
+            const offset = {
+                x: (nextCanvas.width / BLOCK_SIZE - matrix[0].length) / 2,
+                y: (nextCanvas.height / BLOCK_SIZE - matrix.length) / 2
+            };
+            
+            const coloredMatrix = matrix.map(row => row.map(value => value === 1 ? nextPiece.typeId : 0));
+            drawMatrix(coloredMatrix, offset, nextContext);
+            nextContext.restore();
+        }
+
+        function draw() {
+            context.fillStyle = '#1a202c';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            
+            context.save();
+            context.scale(BLOCK_SIZE, BLOCK_SIZE);
+            
+            drawMatrix(board, { x: 0, y: 0 }, context);
+            if (player) {
+                const coloredPlayerMatrix = player.matrix.map(row => row.map(value => value === 1 ? player.typeId : 0));
+                drawMatrix(coloredPlayerMatrix, player.pos, context);
+            }
+            
+            context.restore();
+            
+            drawNextPiece();
+        }
+        
+        function playerDrop() {
+            if (!player) return;
+            player.pos.y++;
+            if (collide(board, player)) {
+                player.pos.y--;
+                merge(board, player);
+                sweep();
+                playerReset();
+                updateScore(0);
+            }
+            dropCounter = 0;
+        }
+        
+        function playerMove(dir) {
+            if (!player) return;
+            player.pos.x += dir;
+            if (collide(board, player)) {
+                player.pos.x -= dir;
+            }
+        }
+        
+        function rotate(matrix, dir) {
+            const rotated = matrix.map((_, index) => matrix.map(col => col[index]));
+            if (dir > 0) {
+                return rotated.map(row => row.reverse());
+            }
+            return rotated.reverse();
+        }
+
+        function playerRotate(dir) {
+            if (!player) return;
+            const pos = player.pos.x;
+            let offset = 1;
+            const originalMatrix = player.matrix;
+            player.matrix = rotate(player.matrix, dir);
+            
+            while (collide(board, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    player.matrix = originalMatrix;
+                    player.pos.x = pos;
+                    return;
+                }
+            }
+        }
+        
+        function playerHardDrop() {
+            if (!player) return;
+            while (!collide(board, player)) {
+                player.pos.y++;
+            }
+            player.pos.y--;
+            merge(board, player);
+            sweep();
+            playerReset();
+            updateScore(0);
+        }
+
+        function collide(board, player) {
+            if (!player) return true;
+            const [m, o] = [player.matrix, player.pos];
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 &&
+                       (board[y + o.y] && board[y + o.y][x + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function merge(board, player) {
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        board[y + player.pos.y][x + player.pos.x] = player.typeId;
+                    }
+                });
+            });
+        }
+        
+        function sweep() {
+            let rowCount = 0;
+            outer: for (let y = board.length - 1; y > 0; --y) {
+                for (let x = 0; x < board[y].length; ++x) {
+                    if (board[y][x] === 0) {
+                        continue outer;
+                    }
+                }
+                
+                const row = board.splice(y, 1)[0].fill(0);
+                board.unshift(row);
+                ++y;
+                
+                rowCount++;
+            }
+            if (rowCount > 0) {
+                lines += rowCount;
+                updateScore(rowCount);
+            }
+        }
+        
+        function updateScore(clearedLines) {
+            const linePoints = [0, 40, 100, 300, 1200];
+            score += linePoints[clearedLines] * level;
+            
+            level = Math.floor(lines / 10) + 1;
+            dropInterval = 1000 / (level * 0.8 + 0.2);
+            
+            scoreElement.innerText = score;
+            levelElement.innerText = level;
+            linesElement.innerText = lines;
+        }
+
+        function update(time = 0) {
+            if (isPaused || isGameOver) {
+                requestAnimationFrame(update);
+                return;
+            }
+
+            const deltaTime = time - lastTime;
+            lastTime = time;
+            
+            dropCounter += deltaTime;
+            if (dropCounter > dropInterval) {
+                playerDrop();
+            }
+            
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        // --- 이벤트 핸들러 ---
+        document.addEventListener('keydown', event => {
+            if (isPaused || isGameOver) return;
+            
+            if (event.key === 'ArrowLeft') {
+                playerMove(-1);
+            } else if (event.key === 'ArrowRight') {
+                playerMove(1);
+            } else if (event.key === 'ArrowDown') {
+                playerDrop();
+            } else if (event.key === 'ArrowUp') {
+                playerRotate(1);
+            } else if (event.key === ' ') {
+                event.preventDefault();
+                playerHardDrop();
+            }
+        });
+        
+        document.getElementById('left-btn').addEventListener('click', () => { if(!isPaused && !isGameOver) playerMove(-1); });
+        document.getElementById('right-btn').addEventListener('click', () => { if(!isPaused && !isGameOver) playerMove(1); });
+        document.getElementById('down-btn').addEventListener('click', () => { if(!isPaused && !isGameOver) playerDrop(); });
+        document.getElementById('rotate-btn').addEventListener('click', () => { if(!isPaused && !isGameOver) playerRotate(1); });
+        document.getElementById('drop-btn').addEventListener('click', () => { if(!isPaused && !isGameOver) playerHardDrop(); });
+        
+        // ✨ AI 색상 변경 버튼 이벤트 리스너
+        aiColorBtn.addEventListener('click', changeAIColors);
+
+        function startGame() {
+            isGameOver = false;
+            startScreenElement.style.display = 'none';
+            gameOverElement.style.display = 'none';
+            board = createBoard();
+            score = 0;
+            lines = 0;
+            level = 1;
+            updateScore(0);
+            playerReset();
+            update();
+        }
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+        
+        pauseBtn.addEventListener('click', () => {
+            if (isGameOver) return;
+            isPaused = !isPaused;
+            pauseBtn.innerText = isPaused ? '계속하기' : '일시정지';
+            pauseBtn.classList.toggle('bg-green-500');
+            pauseBtn.classList.toggle('hover:bg-green-600');
+            pauseBtn.classList.toggle('bg-yellow-500');
+            pauseBtn.classList.toggle('hover:bg-yellow-600');
+            if (!isPaused) { // 일시정지 해제 시 루프 재개
+                lastTime = performance.now(); // 시간 초기화
+                update();
+            }
+        });
+
+    </script>
+</body>
+</html>
