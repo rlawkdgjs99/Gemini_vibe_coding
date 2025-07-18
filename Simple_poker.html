@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 대전 포커 게임</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            touch-action: manipulation; /* 모바일에서 더블 탭 확대 방지 */
+        }
+        .card {
+            width: 80px;
+            height: 120px;
+            border: 1px solid #BDBDBD;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 8px;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+        .card.selected {
+            transform: translateY(-10px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+            border-color: #2563EB;
+        }
+        .card.back {
+            background-color: #2563EB;
+            background-image: 
+                linear-gradient(45deg, rgba(255, 255, 255, 0.1) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.1) 75%, transparent 75%, transparent);
+            background-size: 30px 30px;
+        }
+        .card .suit {
+            font-size: 24px;
+            line-height: 1;
+        }
+        .card .rank {
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .card .top {
+            text-align: left;
+        }
+        .card .bottom {
+            text-align: right;
+            transform: rotate(180deg);
+        }
+        .red { color: #EF4444; }
+        .black { color: #1F2937; }
+
+        /* 모바일 반응형 스타일 */
+        @media (max-width: 640px) {
+            .card {
+                width: 60px;
+                height: 90px;
+                padding: 4px;
+                border-radius: 6px;
+            }
+            .card .suit {
+                font-size: 18px;
+            }
+            .card .rank {
+                font-size: 16px;
+            }
+            h1 {
+                font-size: 24px;
+            }
+            h2 {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl mx-auto bg-green-800 rounded-2xl shadow-2xl p-4 sm:p-6 lg:p-8 border-4 border-green-900">
+        <div class="text-center mb-4">
+            <h1 class="text-3xl sm:text-4xl font-bold text-white tracking-wider">AI 포커</h1>
+            <p id="status-message" class="text-yellow-300 h-6 mt-2 text-lg font-semibold"></p>
+        </div>
+
+        <!-- 컴퓨터 핸드 -->
+        <div class="mb-8 min-h-[140px] sm:min-h-[160px]">
+            <h2 class="text-xl sm:text-2xl font-bold text-white mb-3 text-center">컴퓨터</h2>
+            <div id="computer-hand" class="flex justify-center items-center space-x-2 sm:space-x-3"></div>
+            <p id="computer-hand-rank" class="text-center text-white font-bold mt-2 h-5"></p>
+        </div>
+
+        <!-- 플레이어 핸드 -->
+        <div class="mb-8 min-h-[140px] sm:min-h-[160px]">
+            <h2 class="text-xl sm:text-2xl font-bold text-white mb-3 text-center">플레이어</h2>
+            <div id="player-hand" class="flex justify-center items-center space-x-2 sm:space-x-3"></div>
+            <p id="player-hand-rank" class="text-center text-white font-bold mt-2 h-5"></p>
+        </div>
+
+        <!-- 버튼 -->
+        <div id="controls" class="flex justify-center items-center space-x-4">
+            <button id="deal-button" class="px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-200 text-lg">딜</button>
+            <button id="draw-button" class="px-6 py-3 bg-yellow-500 text-white font-bold rounded-lg shadow-md hover:bg-yellow-600 transition duration-200 text-lg hidden">교환</button>
+            <button id="play-again-button" class="px-6 py-3 bg-green-500 text-white font-bold rounded-lg shadow-md hover:bg-green-600 transition duration-200 text-lg hidden">다시하기</button>
+        </div>
+    </div>
+
+    <script>
+        // DOM 요소 가져오기
+        const dealButton = document.getElementById('deal-button');
+        const drawButton = document.getElementById('draw-button');
+        const playAgainButton = document.getElementById('play-again-button');
+        const playerHandDiv = document.getElementById('player-hand');
+        const computerHandDiv = document.getElementById('computer-hand');
+        const statusMessage = document.getElementById('status-message');
+        const playerHandRankDiv = document.getElementById('player-hand-rank');
+        const computerHandRankDiv = document.getElementById('computer-hand-rank');
+
+        // 게임 상태 변수
+        let deck = [];
+        let playerHand = [];
+        let computerHand = [];
+        let gameState = 'initial'; // initial, dealt, drawn
+
+        // 카드 정보
+        const SUITS = ['♠', '♥', '♦', '♣'];
+        const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+        const RANK_VALUES = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
+        const HAND_RANKS = {
+            ROYAL_FLUSH: { name: '로열 플러시', value: 10 },
+            STRAIGHT_FLUSH: { name: '스트레이트 플러시', value: 9 },
+            FOUR_OF_A_KIND: { name: '포카드', value: 8 },
+            FULL_HOUSE: { name: '풀하우스', value: 7 },
+            FLUSH: { name: '플러시', value: 6 },
+            STRAIGHT: { name: '스트레이트', value: 5 },
+            THREE_OF_A_KIND: { name: '트리플', value: 4 },
+            TWO_PAIR: { name: '투 페어', value: 3 },
+            ONE_PAIR: { name: '원 페어', value: 2 },
+            HIGH_CARD: { name: '하이 카드', value: 1 }
+        };
+
+        // --- 게임 초기화 및 진행 함수 ---
+
+        /**
+         * 새로운 52장 카드 덱을 생성합니다.
+         */
+        function createDeck() {
+            deck = [];
+            for (const suit of SUITS) {
+                for (const rank of RANKS) {
+                    deck.push({ suit, rank });
+                }
+            }
+        }
+
+        /**
+         * Fisher-Yates 알고리즘으로 덱을 섞습니다.
+         */
+        function shuffleDeck() {
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+        }
+
+        /**
+         * 게임을 시작합니다. 덱을 생성하고 섞은 후, 플레이어와 컴퓨터에게 카드를 5장씩 나눠줍니다.
+         */
+        function dealCards() {
+            createDeck();
+            shuffleDeck();
+
+            playerHand = [];
+            computerHand = [];
+
+            for (let i = 0; i < 5; i++) {
+                playerHand.push(deck.pop());
+                computerHand.push(deck.pop());
+            }
+
+            gameState = 'dealt';
+            renderGame();
+            updateStatus('교환할 카드를 선택하세요.');
+        }
+
+        /**
+         * 게임 보드를 현재 상태에 맞게 다시 그립니다.
+         */
+        function renderGame() {
+            renderHand(playerHand, playerHandDiv, true);
+            if (gameState === 'drawn') {
+                renderHand(computerHand, computerHandDiv, true);
+                const playerRank = evaluateHand(playerHand);
+                const computerRank = evaluateHand(computerHand);
+                playerHandRankDiv.textContent = playerRank.name;
+                computerHandRankDiv.textContent = computerRank.name;
+            } else {
+                renderHand(computerHand, computerHandDiv, false); // 컴퓨터 카드는 뒷면으로
+                 playerHandRankDiv.textContent = '';
+                 computerHandRankDiv.textContent = '';
+            }
+            updateControls();
+        }
+
+        /**
+         * 특정 핸드(카드 뭉치)를 화면에 표시합니다.
+         * @param {Array} hand - 표시할 카드 배열
+         * @param {HTMLElement} element - 카드를 표시할 div 요소
+         * @param {boolean} faceUp - 카드를 앞면으로 표시할지 여부
+         */
+        function renderHand(hand, element, faceUp) {
+            element.innerHTML = '';
+            hand.forEach((card, index) => {
+                const cardDiv = document.createElement('div');
+                if (faceUp) {
+                    const color = (card.suit === '♥' || card.suit === '♦') ? 'red' : 'black';
+                    cardDiv.className = `card ${color}`;
+                    cardDiv.innerHTML = `
+                        <div class="top">
+                            <div class="rank">${card.rank}</div>
+                            <div class="suit">${card.suit}</div>
+                        </div>
+                        <div class="bottom">
+                            <div class="rank">${card.rank}</div>
+                            <div class="suit">${card.suit}</div>
+                        </div>
+                    `;
+                    cardDiv.dataset.cardIndex = index;
+                    if (element === playerHandDiv && gameState === 'dealt') {
+                        cardDiv.addEventListener('click', () => toggleCardSelection(cardDiv));
+                    }
+                } else {
+                    cardDiv.className = 'card back';
+                }
+                element.appendChild(cardDiv);
+            });
+        }
+
+        /**
+         * 플레이어가 교환할 카드를 선택/해제합니다.
+         * @param {HTMLElement} cardDiv - 클릭된 카드 div 요소
+         */
+        function toggleCardSelection(cardDiv) {
+            if (gameState !== 'dealt') return;
+            cardDiv.classList.toggle('selected');
+        }
+
+        /**
+         * 플레이어가 선택한 카드를 버리고 새 카드를 뽑습니다.
+         */
+        function playerDraw() {
+            const selectedCards = playerHandDiv.querySelectorAll('.card.selected');
+            const indicesToDiscard = Array.from(selectedCards).map(c => parseInt(c.dataset.cardIndex));
+
+            // 선택한 카드 버리고 새 카드 받기
+            indicesToDiscard.sort((a, b) => b - a); // 인덱스가 큰 것부터 제거해야 splice가 꼬이지 않음
+            for (const index of indicesToDiscard) {
+                playerHand.splice(index, 1);
+            }
+            for (let i = 0; i < indicesToDiscard.length; i++) {
+                playerHand.push(deck.pop());
+            }
+
+            // 컴퓨터 턴 진행
+            computerTurn();
+        }
+        
+        /**
+         * 컴퓨터 AI가 카드를 교환하는 로직입니다.
+         */
+        function computerTurn() {
+            const initialRank = evaluateHand(computerHand).value;
+            const indicesToDiscard = computerDecision(computerHand, initialRank);
+
+            // 결정된 카드 버리고 새 카드 받기
+            indicesToDiscard.sort((a, b) => b - a);
+            for (const index of indicesToDiscard) {
+                computerHand.splice(index, 1);
+            }
+            for (let i = 0; i < indicesToDiscard.length; i++) {
+                computerHand.push(deck.pop());
+            }
+
+            gameState = 'drawn';
+            showdown();
+        }
+
+        /**
+         * 컴퓨터가 어떤 카드를 버릴지 결정하는 AI 로직입니다.
+         * @param {Array} hand - 컴퓨터의 현재 카드
+         * @param {number} rankValue - 현재 핸드의 족보 값
+         * @returns {Array} 버릴 카드의 인덱스 배열
+         */
+        function computerDecision(hand, rankValue) {
+            // 이미 좋은 족보(스트레이트 이상)이면 교환하지 않음
+            if (rankValue >= HAND_RANKS.STRAIGHT.value) {
+                return [];
+            }
+            
+            const rankCounts = getRankCounts(hand);
+            const handRanks = hand.map(c => c.rank);
+
+            // 포카드, 트리플, 투페어, 원페어 유지 전략
+            if (rankValue === HAND_RANKS.THREE_OF_A_KIND.value) {
+                const tripleRank = Object.keys(rankCounts).find(r => rankCounts[r] === 3);
+                return getIndicesToDiscard(hand, (card) => card.rank !== tripleRank);
+            }
+            if (rankValue === HAND_RANKS.TWO_PAIR.value) {
+                const pairRanks = Object.keys(rankCounts).filter(r => rankCounts[r] === 2);
+                return getIndicesToDiscard(hand, (card) => !pairRanks.includes(card.rank));
+            }
+            if (rankValue === HAND_RANKS.ONE_PAIR.value) {
+                const pairRank = Object.keys(rankCounts).find(r => rankCounts[r] === 2);
+                return getIndicesToDiscard(hand, (card) => card.rank !== pairRank);
+            }
+
+            // 플러시 드로우 (같은 무늬 4장)
+            const suitCounts = getSuitCounts(hand);
+            const flushSuit = Object.keys(suitCounts).find(s => suitCounts[s] === 4);
+            if (flushSuit) {
+                return getIndicesToDiscard(hand, (card) => card.suit !== flushSuit);
+            }
+
+            // 스트레이트 드로우 (4장 연속)
+            const sortedRanks = hand.map(c => RANK_VALUES[c.rank]).sort((a, b) => a - b);
+            // 양방 스트레이트 드로우 (e.g., 4,5,6,7)
+            for (let i = 0; i < 2; i++) {
+                if (sortedRanks[i+3] - sortedRanks[i] === 3 && new Set(sortedRanks.slice(i, i+4)).size === 4) {
+                    const straightRanks = sortedRanks.slice(i, i+4).map(val => RANKS[val-2]);
+                    return getIndicesToDiscard(hand, (card) => !straightRanks.includes(card.rank));
+                }
+            }
+            // 인사이드 스트레이트 드로우 (e.g., 4,5,7,8)
+            for (let i = 0; i < 2; i++) {
+                 if (sortedRanks[i+3] - sortedRanks[i] === 4 && new Set(sortedRanks.slice(i, i+4)).size === 4) {
+                    const straightRanks = sortedRanks.slice(i, i+4).map(val => RANKS[val-2]);
+                    return getIndicesToDiscard(hand, (card) => !straightRanks.includes(card.rank));
+                }
+            }
+
+            // 위 전략에 해당 없으면, 가장 가치가 낮은 카드 3장을 버림 (간단한 전략)
+            const sortedHand = [...hand].sort((a, b) => RANK_VALUES[a.rank] - RANK_VALUES[b.rank]);
+            const toDiscard = sortedHand.slice(0, 3);
+            return getIndicesToDiscard(hand, (card) => toDiscard.includes(card));
+        }
+
+        /**
+         * 특정 조건에 맞는 카드의 인덱스를 찾아 배열로 반환합니다.
+         * @param {Array} hand - 전체 핸드
+         * @param {Function} condition - 버릴 카드를 결정하는 조건 함수
+         * @returns {Array} 버릴 카드의 인덱스 배열
+         */
+        function getIndicesToDiscard(hand, condition) {
+            const indices = [];
+            hand.forEach((card, index) => {
+                if (condition(card)) {
+                    indices.push(index);
+                }
+            });
+            return indices;
+        }
+
+        /**
+         * 최종 결과를 보여주고 승자를 결정합니다.
+         */
+        function showdown() {
+            renderGame(); // 컴퓨터 카드 공개
+
+            const playerResult = evaluateHand(playerHand);
+            const computerResult = evaluateHand(computerHand);
+
+            let winnerMessage;
+            if (playerResult.value > computerResult.value) {
+                winnerMessage = `플레이어 승리! (${playerResult.name})`;
+            } else if (computerResult.value > playerResult.value) {
+                winnerMessage = `컴퓨터 승리! (${computerResult.name})`;
+            } else {
+                // 족보가 같을 경우, 높은 숫자로 승부 (하이카드 비교)
+                const playerHigh = getHighCardValue(playerResult.tieBreaker);
+                const computerHigh = getHighCardValue(computerResult.tieBreaker);
+                if (playerHigh > computerHigh) {
+                    winnerMessage = `플레이어 승리! (하이카드)`;
+                } else if (computerHigh > playerHigh) {
+                    winnerMessage = `컴퓨터 승리! (하이카드)`;
+                } else {
+                    winnerMessage = '무승부!';
+                }
+            }
+            updateStatus(winnerMessage);
+        }
+
+        /**
+         * 게임을 초기 상태로 리셋합니다.
+         */
+        function playAgain() {
+            gameState = 'initial';
+            renderGame();
+            updateStatus('딜 버튼을 눌러 시작하세요.');
+            playerHandRankDiv.textContent = '';
+            computerHandRankDiv.textContent = '';
+            computerHandDiv.innerHTML = '';
+            playerHandDiv.innerHTML = '';
+        }
+
+        // --- 핸드 평가(족보 계산) 함수 ---
+
+        function getRankCounts(hand) {
+            const counts = {};
+            for (const card of hand) {
+                counts[card.rank] = (counts[card.rank] || 0) + 1;
+            }
+            return counts;
+        }
+
+        function getSuitCounts(hand) {
+            const counts = {};
+            for (const card of hand) {
+                counts[card.suit] = (counts[card.suit] || 0) + 1;
+            }
+            return counts;
+        }
+
+        function isFlush(hand) {
+            const firstSuit = hand[0].suit;
+            return hand.every(card => card.suit === firstSuit);
+        }
+
+        function isStraight(hand) {
+            const ranks = hand.map(c => RANK_VALUES[c.rank]).sort((a, b) => a - b);
+            const uniqueRanks = [...new Set(ranks)];
+            if (uniqueRanks.length !== 5) return false;
+
+            // A-2-3-4-5 스트레이트 (휠)
+            if (uniqueRanks[4] === 14 && uniqueRanks[0] === 2 && uniqueRanks[1] === 3 && uniqueRanks[2] === 4 && uniqueRanks[3] === 5) {
+                return true;
+            }
+            // 일반 스트레이트
+            return uniqueRanks[4] - uniqueRanks[0] === 4;
+        }
+        
+        /**
+         * 핸드를 평가하여 족보를 반환합니다.
+         * @param {Array} hand - 평가할 5장의 카드
+         * @returns {Object} { name, value, tieBreaker } 족보 이름, 값, 동점자 결정용 카드 배열
+         */
+        function evaluateHand(hand) {
+            const rankCounts = getRankCounts(hand);
+            const counts = Object.values(rankCounts).sort((a, b) => b - a);
+            const flush = isFlush(hand);
+            const straight = isStraight(hand);
+            const sortedRanks = hand.map(c => RANK_VALUES[c.rank]).sort((a, b) => b - a);
+
+            if (straight && flush) {
+                if (sortedRanks[0] === RANK_VALUES.A && sortedRanks[4] === RANK_VALUES['10']) {
+                    return { ...HAND_RANKS.ROYAL_FLUSH, tieBreaker: sortedRanks };
+                }
+                return { ...HAND_RANKS.STRAIGHT_FLUSH, tieBreaker: sortedRanks };
+            }
+            if (counts[0] === 4) {
+                return { ...HAND_RANKS.FOUR_OF_A_KIND, tieBreaker: getTieBreakerRanks(rankCounts) };
+            }
+            if (counts[0] === 3 && counts[1] === 2) {
+                return { ...HAND_RANKS.FULL_HOUSE, tieBreaker: getTieBreakerRanks(rankCounts) };
+            }
+            if (flush) {
+                return { ...HAND_RANKS.FLUSH, tieBreaker: sortedRanks };
+            }
+            if (straight) {
+                return { ...HAND_RANKS.STRAIGHT, tieBreaker: sortedRanks };
+            }
+            if (counts[0] === 3) {
+                return { ...HAND_RANKS.THREE_OF_A_KIND, tieBreaker: getTieBreakerRanks(rankCounts) };
+            }
+            if (counts[0] === 2 && counts[1] === 2) {
+                return { ...HAND_RANKS.TWO_PAIR, tieBreaker: getTieBreakerRanks(rankCounts) };
+            }
+            if (counts[0] === 2) {
+                return { ...HAND_RANKS.ONE_PAIR, tieBreaker: getTieBreakerRanks(rankCounts) };
+            }
+            return { ...HAND_RANKS.HIGH_CARD, tieBreaker: sortedRanks };
+        }
+        
+        /**
+         * 족보가 같을 때 승부를 가리기 위한 랭크 배열을 생성합니다.
+         * @param {Object} rankCounts - { 'K': 2, '7': 1, ... } 형태의 객체
+         * @returns {Array} 중요도 순으로 정렬된 랭크 값 배열
+         */
+        function getTieBreakerRanks(rankCounts) {
+            const ranksByCount = {};
+            for (const rank in rankCounts) {
+                const count = rankCounts[rank];
+                if (!ranksByCount[count]) {
+                    ranksByCount[count] = [];
+                }
+                ranksByCount[count].push(RANK_VALUES[rank]);
+            }
+            
+            // 각 카운트 그룹 내에서 랭크를 내림차순 정렬
+            for (const count in ranksByCount) {
+                ranksByCount[count].sort((a, b) => b - a);
+            }
+
+            // 카운트가 높은 그룹(페어, 트리플 등)부터 배열에 추가
+            const sortedCounts = Object.keys(ranksByCount).sort((a, b) => b - a);
+            
+            const tieBreaker = [];
+            for (const count of sortedCounts) {
+                tieBreaker.push(...ranksByCount[count]);
+            }
+            return tieBreaker;
+        }
+        
+        /**
+         * 동점자 결정용 랭크 배열을 하나의 숫자로 변환하여 비교하기 쉽게 만듭니다.
+         * @param {Array} tieBreaker - [13, 13, 8, 5, 2] 같은 랭크 값 배열
+         * @returns {number} 1313080502 와 같은 숫자
+         */
+        function getHighCardValue(tieBreaker) {
+             return parseInt(tieBreaker.map(r => r.toString().padStart(2, '0')).join(''));
+        }
+
+        // --- UI 업데이트 함수 ---
+
+        function updateStatus(message) {
+            statusMessage.textContent = message;
+        }
+
+        function updateControls() {
+            dealButton.classList.toggle('hidden', gameState !== 'initial');
+            drawButton.classList.toggle('hidden', gameState !== 'dealt');
+            playAgainButton.classList.toggle('hidden', gameState !== 'drawn');
+        }
+
+        // --- 이벤트 리스너 ---
+        dealButton.addEventListener('click', dealCards);
+        drawButton.addEventListener('click', playerDraw);
+        playAgainButton.addEventListener('click', playAgain);
+
+        // --- 초기 실행 ---
+        playAgain(); // 게임 시작 시 초기화
+    </script>
+</body>
+</html>
