@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>카지노 슬롯머신</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* 기본 폰트 및 배경 설정 */
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background: radial-gradient(ellipse at center, #3a1c1c, #1a0b0b);
+        }
+
+        /* 디지털 스타일 폰트 */
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* 슬롯머신 프레임 스타일 */
+        .slot-machine-frame {
+            background: linear-gradient(145deg, #2c2c2c, #1a1a1a);
+            border-radius: 20px;
+            border: 6px solid;
+            border-image: linear-gradient(to bottom, #fde047, #a16207) 1;
+            box-shadow: 0 0 40px rgba(253, 224, 71, 0.4), inset 0 0 15px rgba(0,0,0,0.8);
+        }
+
+        /* 릴 스타일: 안으로 들어간 듯한 효과 */
+        .reel {
+            background-color: #111827;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.7);
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+        
+        /* 릴이 멈출 때 약간의 바운스 효과 */
+        .reel.stopping {
+            animation: bounce 0.5s ease-out;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-20px); }
+            60% { transform: translateY(5px); }
+        }
+
+        /* 스핀 버튼 스타일 */
+        #spinButton {
+            background: linear-gradient(180deg, #facc15 0%, #d97706 100%);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
+            transition: all 0.2s ease-in-out;
+            border-bottom: 4px solid #a16207;
+        }
+
+        #spinButton:hover {
+            transform: scale(1.02) translateY(-2px);
+            box-shadow: 0 0 25px rgba(250, 204, 21, 0.8);
+        }
+
+        #spinButton:active {
+            transform: scale(0.98) translateY(1px);
+            border-bottom-width: 2px;
+        }
+
+        #spinButton:disabled {
+            background: #6b7280;
+            border-bottom-color: #4b5563;
+            cursor: not-allowed;
+            transform: scale(1);
+            box-shadow: none;
+        }
+
+        /* 메시지 텍스트 그림자 효과 */
+        #message.win {
+            color: #fde047;
+            text-shadow: 0 0 10px #facc15, 0 0 20px #facc15;
+            animation: pulse-win 1s infinite;
+        }
+        
+        #message.lose {
+            color: #9ca3af;
+        }
+        
+        #message.error {
+            color: #ef4444;
+        }
+
+        @keyframes pulse-win {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+    </style>
+</head>
+<body class="text-white flex items-center justify-center min-h-screen p-4">
+
+    <div class="slot-machine-frame w-full max-w-md mx-auto p-6 md:p-8">
+        
+        <!-- 제목 -->
+        <h1 class="font-orbitron text-4xl md:text-5xl font-bold text-center mb-2 text-yellow-300" style="text-shadow: 3px 3px 6px #000;">SLOT MACHINE</h1>
+        <p class="text-center text-gray-400 mb-8">행운을 시험해보세요!</p>
+
+        <!-- 슬롯머신 릴 -->
+        <div class="flex justify-center items-center space-x-4 bg-black/50 p-6 rounded-lg mb-8 border-2 border-gray-700">
+            <div id="reel1" class="reel text-6xl md:text-8xl p-4 rounded-lg w-1/3 text-center overflow-hidden">🍒</div>
+            <div id="reel2" class="reel text-6xl md:text-8xl p-4 rounded-lg w-1/3 text-center overflow-hidden">🍋</div>
+            <div id="reel3" class="reel text-6xl md:text-8xl p-4 rounded-lg w-1/3 text-center overflow-hidden">🍊</div>
+        </div>
+
+        <!-- 게임 정보 (크레딧 및 메시지) -->
+        <div class="text-center mb-8">
+            <p class="text-xl">크레딧: <span id="credits" class="font-bold text-green-400 font-orbitron">100</span></p>
+            <p id="message" class="text-lg h-8 mt-2 font-semibold"></p>
+        </div>
+
+        <!-- 스핀 버튼 -->
+        <button id="spinButton" class="w-full text-gray-900 font-bold py-4 px-4 rounded-lg text-2xl shadow-lg">
+            SPIN! (COST: 5)
+        </button>
+
+    </div>
+
+    <script>
+        // DOM 요소 가져오기
+        const reels = [
+            document.getElementById('reel1'),
+            document.getElementById('reel2'),
+            document.getElementById('reel3')
+        ];
+        const spinButton = document.getElementById('spinButton');
+        const creditsSpan = document.getElementById('credits');
+        const messageP = document.getElementById('message');
+
+        // 게임 설정
+        const symbols = ['🍒', '🍋', '🍊', '🍇', '🍉', '🔔', '⭐', '💎', '7️⃣'];
+        const spinCost = 5;
+        const winPayouts = {
+            '🍒': 10, '🍋': 15, '🍊': 20, '�': 25, '🍉': 30,
+            '🔔': 50, '⭐': 75, '💎': 100, '7️⃣': 250 // 잭팟!
+        };
+        let credits = 100;
+        let isSpinning = false;
+        let reelIntervals = [];
+
+        // 스핀 버튼에 클릭 이벤트 리스너 추가
+        spinButton.addEventListener('click', handleSpin);
+
+        // 스핀 처리 함수
+        function handleSpin() {
+            if (isSpinning || credits < spinCost) {
+                if (credits < spinCost) {
+                    showMessage("크레딧이 부족합니다!", "error");
+                }
+                return;
+            }
+
+            isSpinning = true;
+            spinButton.disabled = true;
+            showMessage('', ''); // 메시지 초기화
+
+            credits -= spinCost;
+            updateCredits();
+
+            // 각 릴에 대해 회전 시작
+            reels.forEach((reel, i) => {
+                // 기존 애니메이션 클래스 제거
+                reel.classList.remove('stopping');
+                // 회전 효과를 위한 인터벌 설정
+                reelIntervals[i] = setInterval(() => {
+                    reel.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+                }, 100); // 100ms마다 심볼 변경 (회전 속도)
+
+                // 시간차를 두고 릴 멈춤
+                setTimeout(() => stopReel(i), 1000 + i * 1000);
+            });
+        }
+
+        // 릴 멈추는 함수
+        function stopReel(reelIndex) {
+            clearInterval(reelIntervals[reelIndex]); // 해당 릴의 회전 인터벌 중지
+            
+            const reel = reels[reelIndex];
+            reel.classList.add('stopping'); // 멈춤 애니메이션 클래스 추가
+
+            // 최종 심볼 결정
+            const randomSymbol = symbols[Math.floor(Math.random() * symbols.length)];
+            reel.textContent = randomSymbol;
+
+            // 애니메이션이 끝난 후 클래스 제거
+            setTimeout(() => reel.classList.remove('stopping'), 500);
+
+            // 마지막 릴이 멈추면 결과 확인
+            if (reelIndex === reels.length - 1) {
+                checkWin();
+            }
+        }
+
+        // 승리 확인 함수
+        function checkWin() {
+            const r1 = reels[0].textContent;
+            const r2 = reels[1].textContent;
+            const r3 = reels[2].textContent;
+
+            if (r1 === r2 && r2 === r3) {
+                const payout = winPayouts[r1];
+                credits += payout;
+                const winMessage = r1 === '7️⃣' ? `JACKPOT! +${payout}` : `WIN! +${payout}`;
+                showMessage(winMessage, "win");
+            } else {
+                showMessage("아쉽네요, 다시 시도하세요!", "lose");
+            }
+
+            isSpinning = false;
+            if (credits >= spinCost) {
+                spinButton.disabled = false;
+            } else {
+                showMessage("게임 오버! 크레딧이 없습니다.", "error");
+            }
+            updateCredits();
+        }
+
+        // 크레딧 업데이트 함수
+        function updateCredits() {
+            creditsSpan.textContent = credits;
+        }
+
+        // 메시지 표시 함수
+        function showMessage(text, type) {
+            messageP.textContent = text;
+            messageP.className = `text-lg h-8 mt-2 font-semibold ${type}`;
+        }
+
+        // 초기 크레딧 설정
+        updateCredits();
+    </script>
+</body>
+</html>
+�
