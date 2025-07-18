@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>블랙잭 게임</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #064e3b; /* Casino Green */
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        .card {
+            width: 80px;
+            height: 120px;
+            background-color: white;
+            color: black;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 8px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            position: relative;
+        }
+        .card.hidden {
+            background-image: repeating-linear-gradient(45deg, #4f46e5, #4f46e5 10px, #6366f1 10px, #6366f1 20px);
+        }
+        .card .suit {
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+        .card .rank {
+            align-self: center;
+            font-size: 2rem;
+        }
+        .card.red { color: #dc2626; }
+        .card.black { color: #1f2937; }
+
+        .btn {
+            transition: all 0.2s ease-in-out;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 10px rgba(0,0,0,0.2);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: translateY(0);
+            box-shadow: none;
+        }
+        .game-board {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            width: 100%;
+            max-width: 800px;
+            padding: 2rem;
+            background-color: #15803d;
+            border-radius: 16px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3), inset 0 0 10px rgba(0,0,0,0.2);
+        }
+        .hand-container {
+            min-height: 150px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container" class="w-full max-w-4xl mx-auto text-center">
+        <h1 class="text-4xl md:text-5xl font-bold mb-6 text-yellow-300" style="text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">블랙잭</h1>
+
+        <div class="game-board">
+            <!-- 딜러 영역 -->
+            <div>
+                <h2 class="text-2xl font-bold mb-2">딜러 (컴퓨터) <span class="text-yellow-300" id="dealer-score"></span></h2>
+                <div id="dealer-hand" class="hand-container flex justify-center items-center gap-3 flex-wrap"></div>
+            </div>
+
+            <!-- 플레이어 영역 -->
+            <div>
+                <h2 class="text-2xl font-bold mb-2">플레이어 <span class="text-yellow-300" id="player-score"></span></h2>
+                <div id="player-hand" class="hand-container flex justify-center items-center gap-3 flex-wrap"></div>
+            </div>
+
+            <!-- 메시지 및 컨트롤 영역 -->
+            <div class="mt-4">
+                <p id="message" class="text-xl h-8 font-bold text-yellow-200"></p>
+                <div id="controls" class="flex justify-center gap-4 mt-4">
+                    <button id="hit-btn" class="btn bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md">카드 받기 (Hit)</button>
+                    <button id="stand-btn" class="btn bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-md">그만 받기 (Stand)</button>
+                </div>
+                <button id="new-game-btn" class="btn bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-md mt-4 hidden">새 게임</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM 요소 가져오기
+        const dealerScoreEl = document.getElementById('dealer-score');
+        const playerScoreEl = document.getElementById('player-score');
+        const dealerHandEl = document.getElementById('dealer-hand');
+        const playerHandEl = document.getElementById('player-hand');
+        const messageEl = document.getElementById('message');
+        const hitBtn = document.getElementById('hit-btn');
+        const standBtn = document.getElementById('stand-btn');
+        const newGameBtn = document.getElementById('new-game-btn');
+        const controlsEl = document.getElementById('controls');
+
+        // 게임 상태 변수
+        let deck = [];
+        let playerHand = [];
+        let dealerHand = [];
+        let playerScore = 0;
+        let dealerScore = 0;
+        let isGameOver = false;
+
+        // 카드 정보
+        const suits = ['♥', '♦', '♠', '♣'];
+        const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+        /**
+         * 새로운 52장 카드 덱 생성
+         */
+        function createDeck() {
+            deck = [];
+            for (const suit of suits) {
+                for (const rank of ranks) {
+                    deck.push({ suit, rank });
+                }
+            }
+        }
+
+        /**
+         * 덱을 무작위로 섞음 (Fisher-Yates 알고리즘)
+         */
+        function shuffleDeck() {
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+        }
+
+        /**
+         * 카드의 숫자 값을 반환
+         * @param {object} card - {suit, rank} 형태의 카드 객체
+         * @returns {number} 카드의 숫자 값 (J,Q,K는 10, A는 11)
+         */
+        function getCardValue(card) {
+            if (['J', 'Q', 'K'].includes(card.rank)) {
+                return 10;
+            }
+            if (card.rank === 'A') {
+                return 11; // Ace는 일단 11로 계산
+            }
+            return parseInt(card.rank);
+        }
+
+        /**
+         * 패의 총 점수를 계산 (Ace 처리 포함)
+         * @param {array} hand - 카드 객체의 배열
+         * @returns {number} 패의 총 점수
+         */
+        function calculateScore(hand) {
+            let score = hand.reduce((sum, card) => sum + getCardValue(card), 0);
+            let aceCount = hand.filter(card => card.rank === 'A').length;
+
+            // 점수가 21을 초과하고 Ace가 있으면, Ace를 1로 변경
+            while (score > 21 && aceCount > 0) {
+                score -= 10;
+                aceCount--;
+            }
+            return score;
+        }
+
+        /**
+         * 카드 DOM 요소를 생성하여 화면에 표시
+         * @param {object} card - 카드 객체
+         * @param {HTMLElement} handElement - 카드를 추가할 부모 요소
+         * @param {boolean} isHidden - 카드를 뒤집어 놓을지 여부
+         */
+        function renderCard(card, handElement, isHidden = false) {
+            const cardDiv = document.createElement('div');
+            const colorClass = (card.suit === '♥' || card.suit === '♦') ? 'red' : 'black';
+            cardDiv.className = `card ${colorClass}`;
+            
+            if (isHidden) {
+                cardDiv.classList.add('hidden');
+                cardDiv.innerHTML = ``;
+            } else {
+                cardDiv.innerHTML = `
+                    <div class="suit">${card.rank} ${card.suit}</div>
+                    <div class="rank">${card.suit}</div>
+                    <div class="suit self-end transform rotate-180">${card.rank} ${card.suit}</div>
+                `;
+            }
+            handElement.appendChild(cardDiv);
+        }
+        
+        /**
+         * 패의 모든 카드를 화면에 렌더링
+         */
+        function renderHands() {
+            dealerHandEl.innerHTML = '';
+            playerHandEl.innerHTML = '';
+
+            playerHand.forEach(card => renderCard(card, playerHandEl));
+            
+            // 딜러의 첫 카드는 게임 종료 전까지 숨김
+            renderCard(dealerHand[0], dealerHandEl, !isGameOver);
+            for (let i = 1; i < dealerHand.length; i++) {
+                renderCard(dealerHand[i], dealerHandEl);
+            }
+
+            updateScores();
+        }
+
+        /**
+         * 점수판 업데이트
+         */
+        function updateScores() {
+            playerScore = calculateScore(playerHand);
+            dealerScore = calculateScore(dealerHand);
+            
+            playerScoreEl.textContent = `(점수: ${playerScore})`;
+            // 게임 종료 시에만 딜러의 전체 점수 공개
+            if (isGameOver) {
+                dealerScoreEl.textContent = `(점수: ${dealerScore})`;
+            } else {
+                // 게임 중에는 딜러의 보이는 카드 점수만 표시
+                const visibleDealerScore = getCardValue(dealerHand[1]);
+                dealerScoreEl.textContent = `(점수: ${visibleDealerScore} + ?)`;
+            }
+        }
+        
+        /**
+         * 게임 결과를 확인하고 메시지 표시
+         */
+        function checkResult() {
+            isGameOver = true;
+            
+            // 딜러의 숨겨진 카드 공개
+            dealerScore = calculateScore(dealerHand); // 정확한 딜러 점수 계산
+            renderHands(); // 모든 카드를 다시 렌더링하여 숨겨진 카드 공개
+
+            let message = '';
+            if (playerScore > 21) {
+                message = '버스트! 딜러 승리!';
+            } else if (dealerScore > 21) {
+                message = '딜러 버스트! 플레이어 승리!';
+            } else if (playerScore > dealerScore) {
+                message = '플레이어 승리!';
+            } else if (dealerScore > playerScore) {
+                message = '딜러 승리!';
+            } else {
+                message = '무승부!';
+            }
+
+            messageEl.textContent = message;
+            showEndGameControls();
+        }
+
+        /**
+         * 딜러의 턴 진행 (AI 로직)
+         */
+        function dealerTurn() {
+            isGameOver = true;
+            renderHands(); // 딜러의 숨겨진 카드 공개
+            
+            const dealerPlay = () => {
+                dealerScore = calculateScore(dealerHand);
+                if (dealerScore < 17) {
+                    dealerHand.push(deck.pop());
+                    renderHands();
+                    setTimeout(dealerPlay, 1000); // 1초 간격으로 카드 받기
+                } else {
+                    checkResult();
+                }
+            };
+            
+            setTimeout(dealerPlay, 500);
+        }
+
+        /**
+         * 게임 종료 시 컨트롤 버튼 상태 변경
+         */
+        function showEndGameControls() {
+            controlsEl.classList.add('hidden');
+            newGameBtn.classList.remove('hidden');
+        }
+
+        /**
+         * 게임 시작 시 컨트롤 버튼 상태 변경
+         */
+        function showStartGameControls() {
+            controlsEl.classList.remove('hidden');
+            newGameBtn.classList.add('hidden');
+            hitBtn.disabled = false;
+            standBtn.disabled = false;
+        }
+
+        /**
+         * 새 게임 시작
+         */
+        function startGame() {
+            isGameOver = false;
+            createDeck();
+            shuffleDeck();
+            
+            playerHand = [deck.pop(), deck.pop()];
+            dealerHand = [deck.pop(), deck.pop()];
+
+            messageEl.textContent = '';
+            showStartGameControls();
+            
+            renderHands();
+            updateScores();
+
+            // 시작부터 블랙잭인 경우 확인
+            if (calculateScore(playerHand) === 21) {
+                messageEl.textContent = '블랙잭! 플레이어 승리!';
+                isGameOver = true;
+                renderHands();
+                showEndGameControls();
+            }
+        }
+
+        // 이벤트 리스너 설정
+        hitBtn.addEventListener('click', () => {
+            if (isGameOver) return;
+
+            playerHand.push(deck.pop());
+            renderHands();
+            updateScores();
+
+            if (playerScore > 21) {
+                messageEl.textContent = '버스트! 딜러 승리!';
+                isGameOver = true;
+                renderHands(); // 딜러 카드 공개
+                showEndGameControls();
+            }
+        });
+
+        standBtn.addEventListener('click', () => {
+            if (isGameOver) return;
+            hitBtn.disabled = true;
+            standBtn.disabled = true;
+            messageEl.textContent = '딜러의 턴입니다...';
+            dealerTurn();
+        });
+
+        newGameBtn.addEventListener('click', startGame);
+
+        // 페이지 로드 시 게임 시작
+        window.onload = startGame;
+    </script>
+</body>
+</html>
